@@ -14,4 +14,7 @@ export const env = {
   port: Number(process.env.PORT || 8080),
   geminiApiKey: process.env.GEMINI_API_KEY,
   gcpCredentialsJson: process.env.GCP_CREDENTIALS_JSON,
+  firebaseProjectId: process.env.FIREBASE_PROJECT_ID,
+  firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+  firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY,
 };
