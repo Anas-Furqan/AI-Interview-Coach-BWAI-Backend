@@ -231,9 +231,25 @@ export async function getSessionReportController(req: Request, res: Response) {
 
 export async function createJobController(req: Request, res: Response) {
   try {
-    const { title, company, logoUrl = '', description, salary, recruiterId } = req.body || {};
-    if (!title || !company || !description || !salary || !recruiterId) {
-      res.status(400).json({ error: 'title, company, description, salary, recruiterId are required.' });
+    const { title, company, logoUrl = '', description, salary, recruiterId, requesterUid } = req.body || {};
+    if (!title || !company || !description || !salary || !recruiterId || !requesterUid) {
+      res.status(400).json({ error: 'title, company, description, salary, recruiterId, requesterUid are required.' });
+      return;
+    }
+
+    const requester = await getUserProfile(String(requesterUid));
+    if (!requester) {
+      res.status(404).json({ error: 'Requester profile not found.' });
+      return;
+    }
+
+    if (requester.role !== 'RECRUITER' && requester.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Only recruiters or admins can create jobs.' });
+      return;
+    }
+
+    if (requester.role !== 'ADMIN' && String(recruiterId) !== String(requesterUid)) {
+      res.status(403).json({ error: 'Recruiters can only create jobs for themselves.' });
       return;
     }
 
@@ -277,8 +293,20 @@ export async function updateJobStatusController(req: Request, res: Response) {
   try {
     const jobId = String(req.params.jobId || '');
     const statusRaw = String(req.body?.status || '').toUpperCase();
-    if (!jobId || !['PENDING', 'APPROVED', 'REJECTED'].includes(statusRaw)) {
-      res.status(400).json({ error: 'jobId and valid status are required.' });
+    const requesterUid = String(req.body?.requesterUid || '');
+    if (!jobId || !['PENDING', 'APPROVED', 'REJECTED'].includes(statusRaw) || !requesterUid) {
+      res.status(400).json({ error: 'jobId, requesterUid, and valid status are required.' });
+      return;
+    }
+
+    const requester = await getUserProfile(requesterUid);
+    if (!requester) {
+      res.status(404).json({ error: 'Requester profile not found.' });
+      return;
+    }
+
+    if (requester.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Only admins can approve or reject jobs.' });
       return;
     }
 
@@ -293,9 +321,25 @@ export async function updateJobStatusController(req: Request, res: Response) {
 export async function applyToJobController(req: Request, res: Response) {
   try {
     const jobId = String(req.params.jobId || '');
-    const { recruiterId, candidateUid, candidateEmail, candidateName } = req.body || {};
-    if (!jobId || !recruiterId || !candidateUid || !candidateEmail) {
-      res.status(400).json({ error: 'jobId, recruiterId, candidateUid, and candidateEmail are required.' });
+    const { recruiterId, candidateUid, candidateEmail, candidateName, requesterUid } = req.body || {};
+    if (!jobId || !recruiterId || !candidateUid || !candidateEmail || !requesterUid) {
+      res.status(400).json({ error: 'jobId, recruiterId, candidateUid, candidateEmail, and requesterUid are required.' });
+      return;
+    }
+
+    const requester = await getUserProfile(String(requesterUid));
+    if (!requester) {
+      res.status(404).json({ error: 'Requester profile not found.' });
+      return;
+    }
+
+    if (requester.role !== 'CANDIDATE') {
+      res.status(403).json({ error: 'Only candidates can apply to jobs.' });
+      return;
+    }
+
+    if (String(candidateUid) !== String(requesterUid)) {
+      res.status(403).json({ error: 'Candidates can only submit applications for themselves.' });
       return;
     }
 
