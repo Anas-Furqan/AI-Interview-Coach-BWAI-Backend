@@ -6,6 +6,7 @@ import interviewRoutes from './routes/interview.routes';
 import userRoutes from './routes/user.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import firebaseRoutes from './routes/firebase.routes';
+import sessionRoutes from './routes/session.routes';
 import sttRoutes from './routes/stt.routes';
 import geminiRoutes from './routes/gemini.routes';
 import atsRoutes from './routes/ats.routes';
@@ -64,6 +65,7 @@ export function createApp() {
   app.use('/api/users', userRoutes);
   app.use('/api/analytics', analyticsRoutes);
   app.use('/api/firebase', firebaseRoutes);
+  app.use('/api/session', sessionRoutes);
   app.use('/api/stt', sttRoutes);
   app.use('/api/gemini', geminiRoutes);
   app.use('/api/ats', atsRoutes);

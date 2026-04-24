@@ -18,7 +18,12 @@ export function attachSttWebSocket(server: HttpServer) {
           if (recognizeStream) recognizeStream.destroy();
 
           recognizeStream = createStreamingRecognize(languageCode)
-            .on('error', (err: Error) => console.error('STT stream error:', err.message))
+            .on('error', (err: Error) => {
+              console.error('STT stream error:', err.message);
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ status: 'error', message: err.message }));
+              }
+            })
             .on('data', (data: unknown) => {
               if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(data));
@@ -30,6 +35,9 @@ export function attachSttWebSocket(server: HttpServer) {
           }
         } catch (error) {
           console.error('Failed to parse STT config message:', error);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ status: 'error', message: 'Invalid STT config payload.' }));
+          }
         }
         return;
       }

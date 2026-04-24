@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
 import { env } from '../config/env';
 import { InterviewContext } from '../models/interview.models';
+import { getCompanyProfile } from '../config/companyProfiles';
 
 const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -14,6 +15,7 @@ const modelCandidates = [
   process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   process.env.GEMINI_FALLBACK_MODEL || 'gemini-1.5-flash',
 ].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
+const backoffScheduleMs = [1000, 2000, 4000];
 
 function createModel(modelName: string) {
   return genAI.getGenerativeModel({ model: modelName, safetySettings });
@@ -50,9 +52,7 @@ export async function generateContentWithRetry(prompt: string, maxRetries = 3): 
           break;
         }
 
-        const baseDelayMs = Math.pow(2, attempt + 1) * 1000;
-        const jitterMs = Math.floor(Math.random() * 300);
-        await delay(baseDelayMs + jitterMs);
+        await delay(backoffScheduleMs[attempt] || backoffScheduleMs[backoffScheduleMs.length - 1]);
       }
     }
   }
@@ -85,19 +85,38 @@ export function buildInterviewerPrompt(currentPhase: string, context: InterviewC
 
   const professional = 'You must remain professional, respectful, unbiased, and interview-appropriate.';
   const pakistanContext = 'Use Pakistani hiring context where relevant (Systems Ltd, HBL, Jazz, Unilever Pakistan).';
+  const difficulty = String(context.difficulty || 'MEDIUM').toUpperCase();
+  const interviewMode = String(context.interviewMode || 'BEHAVIORAL').toUpperCase();
+  const difficultyStyle =
+    difficulty === 'EASY'
+      ? 'Keep complexity beginner-friendly and focus on fundamentals.'
+      : difficulty === 'HARD'
+        ? 'Use senior-level depth, include constraints/trade-offs, and probe decision quality.'
+        : 'Use realistic mid-level complexity and practical scenarios.';
+  const modeStyle =
+    interviewMode === 'CODING'
+      ? 'You are conducting a coding interview. Ask coding/problem-solving questions and request concise explanations of approach, complexity, and edge cases.'
+      : 'You are conducting a behavioral and role-fit interview.';
   const summaryContext = context.profileSummary ? `Candidate summary: """${context.profileSummary}"""` : '';
+  const companyContext = context.targetCompany ? `Interview is for a candidate applying to ${context.targetCompany}.` : '';
+  const companyProfile = getCompanyProfile(context.targetCompany);
+  const companyStyle = companyProfile
+    ? `Target company profile: ${companyProfile.company}. Interview style: ${companyProfile.interviewStyle}. Focus areas: ${companyProfile.focusAreas.join(', ')}. Guidance: ${companyProfile.opener}`
+    : '';
+  const companyTarget = context.targetCompany ? `Adapt tone and examples to ${context.targetCompany}.` : '';
+  const brevityDirective = 'Keep each interviewer turn concise: ask one punchy question in 1-2 short sentences.';
 
   if (currentPhase === 'GREETING') {
     const nameTag = context.userName && context.userName !== 'Candidate' ? `, ${context.userName}` : '';
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} Start the interview for ${context.role}. Greet the candidate${nameTag} and ask for a concise introduction. ${summaryContext}`,
+      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Start the interview for ${context.role}. Greet the candidate${nameTag} and ask for a concise introduction. ${summaryContext}`,
       nextPhase: 'INTRODUCTION',
     };
   }
 
   if (currentPhase === 'INTRODUCTION') {
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} Candidate intro: "${context.userAnswer}". Ask the next experience question using CV and summary context. CV: """${context.cvText}""" ${summaryContext}`,
+      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate intro: "${context.userAnswer}". Ask the next experience question using CV and summary context. CV: """${context.cvText}""" ${summaryContext}`,
       nextPhase: 'EXPERIENCE',
     };
   }
@@ -105,7 +124,7 @@ export function buildInterviewerPrompt(currentPhase: string, context: InterviewC
   if (parseInt(context.expQuestionsAsked, 10) < parseInt(context.numExpQuestions, 10)) {
     const nextPhase = parseInt(context.expQuestionsAsked, 10) + 1 >= parseInt(context.numExpQuestions, 10) ? 'ROLE_SPECIFIC' : 'EXPERIENCE';
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} Candidate answer: "${context.userAnswer}". Ask experience question ${parseInt(context.expQuestionsAsked, 10) + 1}/${context.numExpQuestions}. CV: """${context.cvText}"""`,
+      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate answer: "${context.userAnswer}". Ask experience question ${parseInt(context.expQuestionsAsked, 10) + 1}/${context.numExpQuestions}. CV: """${context.cvText}"""`,
       nextPhase,
     };
   }
@@ -113,8 +132,11 @@ export function buildInterviewerPrompt(currentPhase: string, context: InterviewC
   if (parseInt(context.roleQuestionsAsked, 10) < parseInt(context.numRoleQuestions, 10)) {
     const nextPhase = parseInt(context.roleQuestionsAsked, 10) + 1 >= parseInt(context.numRoleQuestions, 10) ? 'PERSONALITY' : 'ROLE_SPECIFIC';
     const jdContext = context.jobDescription ? `Use this job description: """${context.jobDescription}"""` : `Ask a realistic ${context.role} role-specific question.`;
+    const codingModeInstruction = interviewMode === 'CODING'
+      ? 'Ask one coding question. Do not provide the solution. Request code plus explanation and time/space complexity.'
+      : '';
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} Candidate answer: "${context.userAnswer}". ${jdContext}`,
+      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate answer: "${context.userAnswer}". ${jdContext} ${codingModeInstruction}`,
       nextPhase,
     };
   }
@@ -122,19 +144,32 @@ export function buildInterviewerPrompt(currentPhase: string, context: InterviewC
   if (parseInt(context.personalityQuestionsAsked, 10) < parseInt(context.numPersonalityQuestions, 10)) {
     const nextPhase = parseInt(context.personalityQuestionsAsked, 10) + 1 >= parseInt(context.numPersonalityQuestions, 10) ? 'CLOSING' : 'PERSONALITY';
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} Ask a fresh personality/behavioral question and avoid repeating earlier ones from history: """${context.fullChatHistory || ''}"""`,
+      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Ask a fresh personality/behavioral question and avoid repeating earlier ones from history: """${context.fullChatHistory || ''}"""`,
       nextPhase,
     };
   }
 
   return {
-    prompt: `${langInstruction} ${professional} Interview complete. Thank ${context.userName} and explain next steps without specific timeline.`,
+    prompt: `${langInstruction} ${professional} ${companyStyle} Interview complete. Thank ${context.userName} and explain next steps without specific timeline.`,
     nextPhase: 'FINISHED',
   };
 }
 
-export function buildPostAnswerPrompt(language: string, lastQuestion: string, userAnswer: string): string {
-  return `You are a career coach. The question was: "${lastQuestion}" and candidate answered: "${userAnswer}". Respond only as valid JSON in ${language} with keys score (0-10) and feedback (2-3 concise sentences).`;
+export function buildPostAnswerPrompt(language: string, lastQuestion: string, userAnswer: string, codeAnswer?: string): string {
+  const codeSection = codeAnswer?.trim()
+    ? `Candidate code submission:\n"""${codeAnswer}"""\nEvaluate correctness, readability, complexity, and edge-case handling.`
+    : '';
+
+  const strictRigor = `You are a ruthless, highly technical FAANG interviewer.
+DO NOT give generic praise.
+If the candidate's answer lacks the STAR method (Situation, Task, Action, Result), deduct points.
+You MUST cite a specific sentence the candidate said, and explain technically why it was strong or weak.
+Provide a final Selection Probability between 0% and 100%.`;
+
+  return `${strictRigor}
+The question was: "${lastQuestion}" and candidate answered: "${userAnswer}".
+${codeSection}
+Respond only as valid JSON in ${language} with keys: score (0-10), feedback (2-4 concise sentences), evidenceQuote (exact candidate sentence), starMissing (boolean), selectionProbability (0-100).`;
 }
 
 export function buildPreAnswerPrompt(language: string, question: string, cvText: string, profileSummary?: string): string {

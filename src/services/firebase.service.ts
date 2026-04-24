@@ -9,6 +9,7 @@ export interface UpsertUserPayload {
   displayName: string | null;
   photoURL: string | null;
   preferredLanguage?: 'en' | 'ur';
+  requestedRole?: 'CANDIDATE' | 'RECRUITER' | 'ADMIN';
 }
 
 export interface CreateSessionPayload {
@@ -41,6 +42,12 @@ export interface FinalizeSessionPayload {
   finalScore: number;
   strengths: string[];
   improvements: string[];
+  analytics?: {
+    filler_count: number;
+    avg_wpm: number;
+    star_compliance: number;
+    confidence_scores: Array<{ questionId: string; confidence: number; score: number }>;
+  } | null;
   transcript?: Array<{
     sender: 'ai' | 'user';
     text: string;
@@ -56,6 +63,34 @@ export interface FinalizeSessionPayload {
     createdAt?: string;
   }>;
   videoSnapshots?: string[];
+}
+
+export type JobStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface CreateJobPayload {
+  title: string;
+  company: string;
+  logoUrl: string;
+  description: string;
+  salary: string;
+  recruiterId: string;
+}
+
+export interface CreateJobApplicationPayload {
+  jobId: string;
+  recruiterId: string;
+  candidateUid: string;
+  candidateEmail: string;
+  candidateName: string;
+}
+
+export interface UserProfileRecord {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL: string;
+  preferredLanguage: 'en' | 'ur';
+  role: 'CANDIDATE' | 'RECRUITER' | 'ADMIN';
 }
 
 function requireFirebaseAdminEnv() {
@@ -98,16 +133,60 @@ export async function verifyIdToken(idToken: string) {
   return auth.verifyIdToken(idToken);
 }
 
-export async function upsertUserProfile(payload: UpsertUserPayload) {
+export async function upsertUserProfile(payload: UpsertUserPayload): Promise<'CANDIDATE' | 'RECRUITER' | 'ADMIN'> {
   const { db } = getFirebaseClients();
+
+  const email = String(payload.email || '').toLowerCase();
+  const normalizedRequestedRole = String(payload.requestedRole || 'CANDIDATE').toUpperCase();
+  const computedRole = env.adminEmails.includes(email)
+    ? 'ADMIN'
+    : normalizedRequestedRole === 'RECRUITER'
+      ? 'RECRUITER'
+      : 'CANDIDATE';
+
   await db.collection('users').doc(payload.uid).set(
     {
       email: payload.email,
       displayName: payload.displayName,
       photoURL: payload.photoURL,
       preferredLanguage: payload.preferredLanguage || 'en',
+      role: computedRole,
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return computedRole;
+}
+
+export async function getUserProfile(uid: string): Promise<UserProfileRecord | null> {
+  const { db } = getFirebaseClients();
+  const snapshot = await db.collection('users').doc(uid).get();
+  if (!snapshot.exists) {
+    return null;
+  }
+
+  const data = snapshot.data() || {};
+  const roleRaw = String(data.role || 'CANDIDATE').toUpperCase();
+  const role = roleRaw === 'ADMIN' ? 'ADMIN' : roleRaw === 'RECRUITER' ? 'RECRUITER' : 'CANDIDATE';
+
+  return {
+    uid,
+    email: String(data.email || ''),
+    displayName: String(data.displayName || ''),
+    photoURL: String(data.photoURL || ''),
+    preferredLanguage: String(data.preferredLanguage || 'en') === 'ur' ? 'ur' : 'en',
+    role,
+  };
+}
+
+export async function updateUserDisplayName(uid: string, displayName: string) {
+  const { db } = getFirebaseClients();
+  await db.collection('users').doc(uid).set(
+    {
+      displayName,
+      updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -154,6 +233,7 @@ export async function finalizeInterviewSession(payload: FinalizeSessionPayload) 
       transcript: payload.transcript || [],
       metricsTimeline: payload.metricsTimeline || [],
       videoSnapshots: payload.videoSnapshots || [],
+      analytics: payload.analytics || null,
       endedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     },
@@ -192,4 +272,83 @@ export async function getQuestionAnalyticsForSession(sessionId: string, limit = 
     .get();
 
   return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function createJob(payload: CreateJobPayload): Promise<string> {
+  const { db } = getFirebaseClients();
+  const ref = await db.collection('jobs').add({
+    title: payload.title,
+    company: payload.company,
+    logoUrl: payload.logoUrl || '',
+    description: payload.description,
+    salary: payload.salary,
+    recruiterId: payload.recruiterId,
+    status: 'PENDING',
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function getJobsByStatus(status: JobStatus) {
+  const { db } = getFirebaseClients();
+  const snap = await db.collection('jobs').where('status', '==', status).get();
+  return snap.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .sort((a: any, b: any) => {
+      const at = a?.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const bt = b?.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return bt - at;
+    });
+}
+
+export async function updateJobStatus(jobId: string, status: JobStatus) {
+  const { db } = getFirebaseClients();
+  await db.collection('jobs').doc(jobId).set(
+    {
+      status,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+export async function createJobApplication(payload: CreateJobApplicationPayload): Promise<string> {
+  const { db } = getFirebaseClients();
+
+  const existing = await db
+    .collection('jobApplications')
+    .where('jobId', '==', payload.jobId)
+    .where('candidateUid', '==', payload.candidateUid)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) {
+    return existing.docs[0].id;
+  }
+
+  const ref = await db.collection('jobApplications').add({
+    jobId: payload.jobId,
+    recruiterId: payload.recruiterId,
+    candidateUid: payload.candidateUid,
+    candidateEmail: payload.candidateEmail,
+    candidateName: payload.candidateName,
+    status: 'APPLIED',
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return ref.id;
+}
+
+export async function listRecruiterApplications(recruiterId: string) {
+  const { db } = getFirebaseClients();
+  const snap = await db.collection('jobApplications').where('recruiterId', '==', recruiterId).get();
+  return snap.docs
+    .map(doc => ({ id: doc.id, ...doc.data() }))
+    .sort((a: any, b: any) => {
+      const at = a?.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const bt = b?.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return bt - at;
+    });
 }

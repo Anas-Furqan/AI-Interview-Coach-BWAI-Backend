@@ -1,8 +1,8 @@
 import { SpeechClient } from '@google-cloud/speech';
-import { env } from '../config/env';
+import { resolveGoogleCredentials } from '../config/gcpCredentials';
 
-const credentials = JSON.parse(env.gcpCredentialsJson);
-const sttClient = new SpeechClient({ credentials });
+const credentials = resolveGoogleCredentials();
+const sttClient = credentials ? new SpeechClient({ credentials }) : new SpeechClient();
 
 export function createStreamingRecognize(languageCode: string) {
   return sttClient.streamingRecognize({

@@ -1,8 +1,8 @@
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
-import { env } from '../config/env';
+import { resolveGoogleCredentials } from '../config/gcpCredentials';
 
-const credentials = JSON.parse(env.gcpCredentialsJson);
-const ttsClient = new TextToSpeechClient({ credentials });
+const credentials = resolveGoogleCredentials();
+const ttsClient = credentials ? new TextToSpeechClient({ credentials }) : new TextToSpeechClient();
 
 export async function synthesizeInterviewAudio(text: string, languageCode: string, selectedVoice?: string): Promise<string | null> {
   try {

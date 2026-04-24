@@ -3,6 +3,9 @@ export interface NextStepBody {
   userName?: string;
   industry?: string;
   role?: string;
+  targetCompany?: string;
+  difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+  interviewMode?: 'BEHAVIORAL' | 'CODING';
   language: string;
   languageCode?: string;
   jobDescription?: string;
@@ -11,6 +14,7 @@ export interface NextStepBody {
   cvText?: string;
   lastQuestion?: string;
   userAnswer?: string;
+  codeAnswer?: string;
   fullChatHistory?: string;
   numExpQuestions: string;
   numRoleQuestions: string;
@@ -24,8 +28,12 @@ export interface NextStepBody {
 export interface InterviewContext {
   userName: string;
   role: string;
+  targetCompany?: string;
+  difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+  interviewMode?: 'BEHAVIORAL' | 'CODING';
   language: string;
   userAnswer?: string;
+  codeAnswer?: string;
   cvText: string;
   jobDescription?: string;
   additionalInfo?: string;
