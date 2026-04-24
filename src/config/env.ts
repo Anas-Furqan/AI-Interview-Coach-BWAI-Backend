@@ -6,7 +6,7 @@ function parseCsv(value?: string): string[] {
   if (!value) return [];
   return value
     .split(',')
-    .map(item => item.trim())
+    .map(item => item.trim().replace(/\/$/, ''))
     .filter(Boolean);
 }
 

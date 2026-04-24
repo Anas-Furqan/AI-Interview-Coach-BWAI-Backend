@@ -15,22 +15,27 @@ import ttsRoutes from './routes/tts.routes';
 const localOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
 const vercelProductionOrigin = 'https://ai-interview-bwai.vercel.app';
 
+function normalizeOrigin(value: string): string {
+  return value.trim().replace(/\/$/, '');
+}
+
 function isAllowedOrigin(origin?: string) {
   if (!origin) return true;
 
-  if (localOrigins.includes(origin)) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (localOrigins.includes(normalizedOrigin)) {
     return true;
   }
 
-  if (origin === vercelProductionOrigin) {
+  if (normalizedOrigin === vercelProductionOrigin) {
     return true;
   }
 
-  if (env.allowedOrigins.includes(origin)) {
+  if (env.allowedOrigins.includes(normalizedOrigin)) {
     return true;
   }
 
-  if (env.allowVercelPreviews && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) {
+  if (env.allowVercelPreviews && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin)) {
     return true;
   }
 
@@ -42,8 +47,9 @@ export function createApp() {
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
-  app.use(cors({
-    origin(origin, callback) {
+
+  const corsOptions = {
+    origin(origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) {
       if (isAllowedOrigin(origin)) {
         callback(null, true);
         return;
@@ -52,7 +58,13 @@ export function createApp() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  }));
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    optionsSuccessStatus: 200,
+    preflightContinue: false,
+  };
+
+  app.use(cors(corsOptions));
+  app.options('*', cors(corsOptions));
 
   app.get('/', (_req, res) => {
     res.send('AI Interview Coach Backend is running!');
