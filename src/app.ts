@@ -13,11 +13,16 @@ import atsRoutes from './routes/ats.routes';
 import ttsRoutes from './routes/tts.routes';
 
 const localOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const vercelProductionOrigin = 'https://ai-interview-bwai.vercel.app';
 
 function isAllowedOrigin(origin?: string) {
   if (!origin) return true;
 
   if (localOrigins.includes(origin)) {
+    return true;
+  }
+
+  if (origin === vercelProductionOrigin) {
     return true;
   }
 
@@ -46,6 +51,7 @@ export function createApp() {
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   }));
 
   app.get('/', (_req, res) => {
