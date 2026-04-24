@@ -96,7 +96,16 @@ export async function firebaseAuthSyncController(req: Request, res: Response) {
 export async function appendQuestionAnalyticsController(req: Request, res: Response) {
   try {
     const sessionId = String(req.params.sessionId || '');
-    const { questionId, confidence, wpm, fillerCount, panic, starMissing, score } = req.body || {};
+    const {
+      questionId,
+      confidence,
+      wpm,
+      fillerCount,
+      panic,
+      starMissing,
+      score,
+      starStatus,
+    } = req.body || {};
 
     if (!sessionId || !questionId) {
       res.status(400).json({ error: 'sessionId and questionId are required.' });
@@ -112,6 +121,7 @@ export async function appendQuestionAnalyticsController(req: Request, res: Respo
       panic: Boolean(panic),
       starMissing: Boolean(starMissing),
       score: Number(score || 0),
+      starStatus,
     });
 
     res.status(201).json({ ok: true });
@@ -124,7 +134,14 @@ export async function appendQuestionAnalyticsController(req: Request, res: Respo
 export async function finalizeSessionController(req: Request, res: Response) {
   try {
     const sessionId = String(req.params.sessionId || '');
-    const { finalScore, strengths = [], improvements = [], transcript = [], metricsTimeline = [] } = req.body || {};
+    const {
+      finalScore,
+      strengths = [],
+      improvements = [],
+      transcript = [],
+      metricsTimeline = [],
+      videoSnapshots = [],
+    } = req.body || {};
 
     if (!sessionId) {
       res.status(400).json({ error: 'sessionId is required.' });
@@ -138,6 +155,7 @@ export async function finalizeSessionController(req: Request, res: Response) {
       improvements: Array.isArray(improvements) ? improvements : [],
       transcript: Array.isArray(transcript) ? transcript : [],
       metricsTimeline: Array.isArray(metricsTimeline) ? metricsTimeline : [],
+      videoSnapshots: Array.isArray(videoSnapshots) ? videoSnapshots : [],
     });
 
     res.json({ ok: true });

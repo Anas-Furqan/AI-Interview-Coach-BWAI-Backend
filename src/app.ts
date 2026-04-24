@@ -8,6 +8,8 @@ import analyticsRoutes from './routes/analytics.routes';
 import firebaseRoutes from './routes/firebase.routes';
 import sttRoutes from './routes/stt.routes';
 import geminiRoutes from './routes/gemini.routes';
+import atsRoutes from './routes/ats.routes';
+import ttsRoutes from './routes/tts.routes';
 
 const localOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
@@ -64,6 +66,8 @@ export function createApp() {
   app.use('/api/firebase', firebaseRoutes);
   app.use('/api/stt', sttRoutes);
   app.use('/api/gemini', geminiRoutes);
+  app.use('/api/ats', atsRoutes);
+  app.use('/api/tts', ttsRoutes);
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'Route not found' });

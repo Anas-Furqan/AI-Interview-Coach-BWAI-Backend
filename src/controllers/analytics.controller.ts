@@ -13,6 +13,12 @@ export async function starNudgeController(req: Request, res: Response) {
     nudge: 'Use STAR: set context, define your task, explain actions, and finish with a measurable result.',
     starMissing: true,
     score: 5,
+    starStatus: {
+      hasSituation: false,
+      hasTask: false,
+      hasAction: false,
+      hasResult: false,
+    },
   };
 
   try {
@@ -32,18 +38,29 @@ Language: ${language}
 Respond only in valid JSON with keys:
 - nudge: one concise actionable suggestion (max 20 words)
 - starMissing: boolean
-- score: number from 0 to 10`;
+- score: number from 0 to 10
+- starStatus: object with keys hasSituation, hasTask, hasAction, hasResult (all boolean)`;
 
     const raw = await generateContentWithRetry(prompt);
     const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
 
-    let parsed: { nudge?: string; starMissing?: boolean; score?: number } | null = null;
+    let parsed: {
+      nudge?: string;
+      starMissing?: boolean;
+      score?: number;
+      starStatus?: {
+        hasSituation: boolean;
+        hasTask: boolean;
+        hasAction: boolean;
+        hasResult: boolean;
+      };
+    } | null = null;
     try {
-      parsed = JSON.parse(cleaned) as { nudge?: string; starMissing?: boolean; score?: number };
+      parsed = JSON.parse(cleaned);
     } catch {
       const objectMatch = cleaned.match(/\{[\s\S]*\}/);
       if (objectMatch) {
-        parsed = JSON.parse(objectMatch[0]) as { nudge?: string; starMissing?: boolean; score?: number };
+        parsed = JSON.parse(objectMatch[0]);
       }
     }
 
@@ -56,6 +73,7 @@ Respond only in valid JSON with keys:
       nudge: String(parsed.nudge || defaultNudge.nudge),
       starMissing: Boolean(parsed.starMissing),
       score: Number.isFinite(Number(parsed.score)) ? Number(parsed.score) : defaultNudge.score,
+      starStatus: parsed.starStatus || defaultNudge.starStatus,
     });
   } catch (error) {
     console.error('starNudgeController error:', error);

@@ -28,6 +28,12 @@ export interface AppendQuestionPayload {
   panic: boolean;
   starMissing: boolean;
   score: number;
+  starStatus?: {
+    hasSituation: boolean;
+    hasTask: boolean;
+    hasAction: boolean;
+    hasResult: boolean;
+  };
 }
 
 export interface FinalizeSessionPayload {
@@ -49,6 +55,7 @@ export interface FinalizeSessionPayload {
     score: number;
     createdAt?: string;
   }>;
+  videoSnapshots?: string[];
 }
 
 function requireFirebaseAdminEnv() {
@@ -131,6 +138,7 @@ export async function appendQuestionAnalytics(payload: AppendQuestionPayload) {
     panic: payload.panic,
     starMissing: payload.starMissing,
     score: payload.score,
+    starStatus: payload.starStatus || null,
     createdAt: FieldValue.serverTimestamp(),
   });
 }
@@ -145,6 +153,7 @@ export async function finalizeInterviewSession(payload: FinalizeSessionPayload) 
       improvements: payload.improvements,
       transcript: payload.transcript || [],
       metricsTimeline: payload.metricsTimeline || [],
+      videoSnapshots: payload.videoSnapshots || [],
       endedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     },
