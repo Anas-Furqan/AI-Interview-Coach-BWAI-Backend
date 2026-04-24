@@ -2,6 +2,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+function parseCsv(value?: string): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 if (!process.env.GEMINI_API_KEY) {
   throw new Error('GEMINI_API_KEY environment variable not set.');
 }
@@ -17,4 +25,6 @@ export const env = {
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID,
   firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL,
   firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY,
+  allowedOrigins: parseCsv(process.env.ALLOWED_ORIGINS),
+  allowVercelPreviews: String(process.env.ALLOW_VERCEL_PREVIEWS || 'false').toLowerCase() === 'true',
 };

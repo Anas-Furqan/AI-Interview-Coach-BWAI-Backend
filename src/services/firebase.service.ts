@@ -35,6 +35,20 @@ export interface FinalizeSessionPayload {
   finalScore: number;
   strengths: string[];
   improvements: string[];
+  transcript?: Array<{
+    sender: 'ai' | 'user';
+    text: string;
+    timestamp?: string;
+  }>;
+  metricsTimeline?: Array<{
+    questionId: string;
+    confidence: number;
+    wpm: number;
+    fillerCount: number;
+    panic: boolean;
+    score: number;
+    createdAt?: string;
+  }>;
 }
 
 function requireFirebaseAdminEnv() {
@@ -68,6 +82,11 @@ function getFirebaseClients() {
 }
 
 export async function verifyGoogleIdToken(idToken: string) {
+  const { auth } = getFirebaseClients();
+  return auth.verifyIdToken(idToken);
+}
+
+export async function verifyIdToken(idToken: string) {
   const { auth } = getFirebaseClients();
   return auth.verifyIdToken(idToken);
 }
@@ -124,6 +143,8 @@ export async function finalizeInterviewSession(payload: FinalizeSessionPayload) 
       finalScore: payload.finalScore,
       strengths: payload.strengths,
       improvements: payload.improvements,
+      transcript: payload.transcript || [],
+      metricsTimeline: payload.metricsTimeline || [],
       endedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     },
@@ -137,6 +158,27 @@ export async function listUserSessions(uid: string, limit = 20) {
     .collection('sessions')
     .where('uid', '==', uid)
     .orderBy('startedAt', 'desc')
+    .limit(limit)
+    .get();
+
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function getSessionById(sessionId: string) {
+  const { db } = getFirebaseClients();
+  const doc = await db.collection('sessions').doc(sessionId).get();
+  if (!doc.exists) {
+    return null;
+  }
+  return { id: doc.id, ...doc.data() };
+}
+
+export async function getQuestionAnalyticsForSession(sessionId: string, limit = 100) {
+  const { db } = getFirebaseClients();
+  const snap = await db
+    .collection('questionAnalytics')
+    .where('sessionId', '==', sessionId)
+    .orderBy('createdAt', 'asc')
     .limit(limit)
     .get();
 

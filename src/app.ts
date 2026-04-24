@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import type { NextFunction, Request, Response } from 'express';
+import { env } from './config/env';
 import interviewRoutes from './routes/interview.routes';
 import userRoutes from './routes/user.routes';
 import analyticsRoutes from './routes/analytics.routes';
@@ -8,12 +9,41 @@ import firebaseRoutes from './routes/firebase.routes';
 import sttRoutes from './routes/stt.routes';
 import geminiRoutes from './routes/gemini.routes';
 
+const localOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+function isAllowedOrigin(origin?: string) {
+  if (!origin) return true;
+
+  if (localOrigins.includes(origin)) {
+    return true;
+  }
+
+  if (env.allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  if (env.allowVercelPreviews && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) {
+    return true;
+  }
+
+  return false;
+}
+
 export function createApp() {
   const app = express();
 
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
-  app.use(cors());
+  app.use(cors({
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+    credentials: true,
+  }));
 
   app.get('/', (_req, res) => {
     res.send('AI Interview Coach Backend is running!');
@@ -23,6 +53,7 @@ export function createApp() {
     res.status(200).json({
       ok: true,
       service: 'ai-interview-coach-backend',
+      allowedOrigins: [...new Set([...localOrigins, ...env.allowedOrigins])],
       timestamp: new Date().toISOString(),
     });
   });

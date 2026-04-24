@@ -10,35 +10,69 @@ const safetySettings = [
 ];
 
 const genAI = new GoogleGenerativeAI(env.geminiApiKey);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', safetySettings });
+const modelCandidates = [
+  process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  process.env.GEMINI_FALLBACK_MODEL || 'gemini-1.5-flash',
+].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
+
+function createModel(modelName: string) {
+  return genAI.getGenerativeModel({ model: modelName, safetySettings });
+}
+
+function isTransientModelError(error: any): boolean {
+  const status = Number(error?.status);
+  return status === 429 || status === 500 || status === 503;
+}
+
+async function delay(ms: number) {
+  await new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export async function generateContentWithRetry(prompt: string, maxRetries = 3): Promise<string> {
-  let attempt = 0;
-  while (attempt < maxRetries) {
-    try {
-      const result = await model.generateContent(prompt);
-      return result.response.text();
-    } catch (error: any) {
-      if (error.status === 503 || error.status === 500) {
-        attempt += 1;
-        if (attempt >= maxRetries) throw error;
-        const delay = Math.pow(2, attempt) * 1000;
-        await new Promise(resolve => setTimeout(resolve, delay));
-      } else {
-        throw error;
+  let lastError: unknown = null;
+
+  for (const modelName of modelCandidates) {
+    const model = createModel(modelName);
+
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+      try {
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+      } catch (error: any) {
+        lastError = error;
+
+        if (!isTransientModelError(error)) {
+          throw error;
+        }
+
+        const isLastAttemptForModel = attempt >= maxRetries - 1;
+        if (isLastAttemptForModel) {
+          break;
+        }
+
+        const baseDelayMs = Math.pow(2, attempt + 1) * 1000;
+        const jitterMs = Math.floor(Math.random() * 300);
+        await delay(baseDelayMs + jitterMs);
       }
     }
   }
-  throw new Error('Failed to generate content after retries.');
+
+  throw lastError || new Error('Failed to generate content after retries.');
 }
 
 export async function extractCandidateName(cvText: string): Promise<string> {
   const namePrompt = `From the following CV text, extract the candidate's full name. Respond with ONLY the name and nothing else. If you cannot find a name, respond with 'Candidate'. CV Text: """${cvText}"""`;
   try {
-    const response = await model.generateContent(namePrompt);
-    return response.response.text().trim() || 'Candidate';
+    const responseText = await generateContentWithRetry(namePrompt, 2);
+    return responseText.trim() || 'Candidate';
   } catch {
-    return 'Candidate';
+    try {
+      const fallbackModel = createModel(modelCandidates[0]);
+      const response = await fallbackModel.generateContent(namePrompt);
+      return response.response.text().trim() || 'Candidate';
+    } catch {
+      return 'Candidate';
+    }
   }
 }
 

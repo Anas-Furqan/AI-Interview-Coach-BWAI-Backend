@@ -3,8 +3,11 @@ import {
   appendQuestionAnalytics,
   createInterviewSession,
   finalizeInterviewSession,
+  getQuestionAnalyticsForSession,
+  getSessionById,
   listUserSessions,
   upsertUserProfile,
+  verifyIdToken,
   verifyGoogleIdToken,
 } from '../services/firebase.service';
 
@@ -60,6 +63,36 @@ export async function createSessionController(req: Request, res: Response) {
   }
 }
 
+export async function firebaseAuthSyncController(req: Request, res: Response) {
+  try {
+    const { idToken, preferredLanguage = 'en' } = req.body || {};
+    if (!idToken) {
+      res.status(400).json({ error: 'idToken is required.' });
+      return;
+    }
+
+    const decoded = await verifyIdToken(String(idToken));
+
+    await upsertUserProfile({
+      uid: decoded.uid,
+      email: decoded.email || null,
+      displayName: decoded.name || null,
+      photoURL: decoded.picture || null,
+      preferredLanguage: preferredLanguage === 'ur' ? 'ur' : 'en',
+    });
+
+    res.json({
+      uid: decoded.uid,
+      email: decoded.email || null,
+      displayName: decoded.name || null,
+      photoURL: decoded.picture || null,
+    });
+  } catch (error) {
+    console.error('firebaseAuthSyncController error:', error);
+    res.status(500).json({ error: 'Failed to sync authenticated user.' });
+  }
+}
+
 export async function appendQuestionAnalyticsController(req: Request, res: Response) {
   try {
     const sessionId = String(req.params.sessionId || '');
@@ -91,7 +124,7 @@ export async function appendQuestionAnalyticsController(req: Request, res: Respo
 export async function finalizeSessionController(req: Request, res: Response) {
   try {
     const sessionId = String(req.params.sessionId || '');
-    const { finalScore, strengths = [], improvements = [] } = req.body || {};
+    const { finalScore, strengths = [], improvements = [], transcript = [], metricsTimeline = [] } = req.body || {};
 
     if (!sessionId) {
       res.status(400).json({ error: 'sessionId is required.' });
@@ -103,6 +136,8 @@ export async function finalizeSessionController(req: Request, res: Response) {
       finalScore: Number(finalScore || 0),
       strengths: Array.isArray(strengths) ? strengths : [],
       improvements: Array.isArray(improvements) ? improvements : [],
+      transcript: Array.isArray(transcript) ? transcript : [],
+      metricsTimeline: Array.isArray(metricsTimeline) ? metricsTimeline : [],
     });
 
     res.json({ ok: true });
@@ -125,5 +160,27 @@ export async function listUserSessionsController(req: Request, res: Response) {
   } catch (error) {
     console.error('listUserSessionsController error:', error);
     res.status(500).json({ error: 'Failed to fetch sessions.' });
+  }
+}
+
+export async function getSessionReportController(req: Request, res: Response) {
+  try {
+    const sessionId = String(req.params.sessionId || '');
+    if (!sessionId) {
+      res.status(400).json({ error: 'sessionId is required.' });
+      return;
+    }
+
+    const session = await getSessionById(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found.' });
+      return;
+    }
+
+    const questionAnalytics = await getQuestionAnalyticsForSession(sessionId);
+    res.json({ session, questionAnalytics });
+  } catch (error) {
+    console.error('getSessionReportController error:', error);
+    res.status(500).json({ error: 'Failed to fetch session report.' });
   }
 }
