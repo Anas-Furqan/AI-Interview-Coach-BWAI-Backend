@@ -1,23 +1,40 @@
-# Use an official Node.js runtime as a parent image
-FROM node:18-slim
+# Build stage
+FROM node:18-slim AS builder
 
-# Set the working directory
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json
+# Copy package files
 COPY package*.json ./
 
-# Install app dependencies
+# Install dependencies
 RUN npm install
 
-# Bundle app source
+# Copy source code
 COPY . .
 
 # Build TypeScript
-RUN npm run build  # Assuming you have a build script in package.json
+RUN npm run build
 
-# Your app binds to port 8080 so you'll use the EXPOSE instruction
-EXPOSE 8080
+# Runtime stage
+FROM node:18-slim
 
-# Define the command to run your app
-CMD [ "node", "dist/index.js" ]
+WORKDIR /usr/src/app
+
+# Copy package files
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm install --production
+
+# Copy built application from builder stage
+COPY --from=builder /usr/src/app/dist ./dist
+
+# Expose port 8000
+EXPOSE 8000
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=8000
+
+# Start the application
+CMD ["node", "dist/index.js"]
