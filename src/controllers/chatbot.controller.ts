@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { detectDialogflowIntent } from '../services/dialogflow.service';
+import { detectDialogflowIntent } from '../services/chatbot.service';
 
 export async function chatbotMessageController(req: Request, res: Response) {
   try {

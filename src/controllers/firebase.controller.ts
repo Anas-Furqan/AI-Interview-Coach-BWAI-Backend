@@ -1,10 +1,16 @@
 import { Request, Response } from 'express';
 import {
+  appendInterviewData,
   appendQuestionAnalytics,
+  createCtsApplication,
   createJob,
   createJobApplication,
   createInterviewSession,
   finalizeInterviewSession,
+  getApplicationById,
+  getActualApplicationsForRecruiter,
+  getInterviewDataByApplication,
+  getJobById,
   getUserProfile,
   getJobsByStatus,
   getQuestionAnalyticsForSession,
@@ -371,6 +377,136 @@ export async function listRecruiterApplicationsController(req: Request, res: Res
   } catch (error) {
     console.error('listRecruiterApplicationsController error:', error);
     res.status(500).json({ error: 'Failed to fetch recruiter applications.' });
+  }
+}
+
+export async function createCtsApplicationController(req: Request, res: Response) {
+  try {
+    const {
+      jobId,
+      recruiterId,
+      candidateId,
+      candidateName,
+      candidateEmail,
+      jobTitle,
+      type,
+      requesterUid,
+    } = req.body || {};
+
+    if (!jobId || !candidateId || !type || !requesterUid) {
+      res.status(400).json({ error: 'jobId, candidateId, type, and requesterUid are required.' });
+      return;
+    }
+
+    if (!['actual', 'mock'].includes(String(type))) {
+      res.status(400).json({ error: 'type must be either actual or mock.' });
+      return;
+    }
+
+    const requester = await getUserProfile(String(requesterUid));
+    if (!requester) {
+      res.status(404).json({ error: 'Requester profile not found.' });
+      return;
+    }
+
+    if (requester.role !== 'CANDIDATE' || String(candidateId) !== String(requesterUid)) {
+      res.status(403).json({ error: 'Only candidates can create CTS applications for themselves.' });
+      return;
+    }
+
+    const resolvedJob = await getJobById(String(jobId));
+    const resolvedRecruiterId = String(recruiterId || (resolvedJob as any)?.recruiterId || '');
+    const resolvedJobTitle = String(jobTitle || (resolvedJob as any)?.title || '');
+
+    if (!resolvedRecruiterId) {
+      res.status(400).json({ error: 'Could not resolve recruiterId for this job.' });
+      return;
+    }
+
+    const applicationId = await createCtsApplication({
+      jobId: String(jobId),
+      recruiterId: resolvedRecruiterId,
+      candidateId: String(candidateId),
+      candidateName: String(candidateName || requester.displayName || ''),
+      candidateEmail: String(candidateEmail || requester.email || ''),
+      jobTitle: resolvedJobTitle,
+      type: String(type) as 'actual' | 'mock',
+    });
+
+    res.status(201).json({ applicationId });
+  } catch (error) {
+    console.error('createCtsApplicationController error:', error);
+    res.status(500).json({ error: 'Failed to create CTS application.' });
+  }
+}
+
+export async function getRecruiterActualInterviewsController(req: Request, res: Response) {
+  try {
+    const recruiterId = String(req.params.recruiterId || '');
+    const requesterUid = String(req.query.requesterUid || '');
+
+    if (!recruiterId || !requesterUid) {
+      res.status(400).json({ error: 'recruiterId and requesterUid are required.' });
+      return;
+    }
+
+    const requester = await getUserProfile(requesterUid);
+    if (!requester) {
+      res.status(404).json({ error: 'Requester profile not found.' });
+      return;
+    }
+
+    const isRecruiterSelf = requester.role === 'RECRUITER' && requesterUid === recruiterId;
+    if (!isRecruiterSelf && requester.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Only the recruiter or admin can view this data.' });
+      return;
+    }
+
+    const applications = await getActualApplicationsForRecruiter(recruiterId);
+    res.json({ applications });
+  } catch (error) {
+    console.error('getRecruiterActualInterviewsController error:', error);
+    res.status(500).json({ error: 'Failed to fetch actual interviews.' });
+  }
+}
+
+export async function getApplicationPerformanceReportController(req: Request, res: Response) {
+  try {
+    const applicationId = String(req.params.applicationId || '');
+    const requesterUid = String(req.query.requesterUid || '');
+
+    if (!applicationId || !requesterUid) {
+      res.status(400).json({ error: 'applicationId and requesterUid are required.' });
+      return;
+    }
+
+    const requester = await getUserProfile(requesterUid);
+    if (!requester) {
+      res.status(404).json({ error: 'Requester profile not found.' });
+      return;
+    }
+
+    const application = await getApplicationById(applicationId);
+    if (!application) {
+      res.status(404).json({ error: 'Application not found.' });
+      return;
+    }
+
+    const appRecord = application as any;
+    const isOwnerCandidate = requester.role === 'CANDIDATE' && requesterUid === String(appRecord.candidateId || '');
+    const isOwnerRecruiter = requester.role === 'RECRUITER' && requesterUid === String(appRecord.recruiterId || '');
+    const isAdmin = requester.role === 'ADMIN';
+
+    if (!isOwnerCandidate && !isOwnerRecruiter && !isAdmin) {
+      res.status(403).json({ error: 'Unauthorized to view this application report.' });
+      return;
+    }
+
+    const interviewData = await getInterviewDataByApplication(applicationId);
+    res.json({ application, interviewData });
+  } catch (error) {
+    console.error('getApplicationPerformanceReportController error:', error);
+    res.status(500).json({ error: 'Failed to fetch application performance report.' });
   }
 }
 

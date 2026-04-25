@@ -2,7 +2,10 @@ import { Router } from 'express';
 import {
   applyToJobController,
   appendQuestionAnalyticsController,
+  createCtsApplicationController,
   createJobController,
+  getApplicationPerformanceReportController,
+  getRecruiterActualInterviewsController,
   getUserProfileController,
   listRecruiterApplicationsController,
   createSessionController,
@@ -27,8 +30,11 @@ router.post('/jobs', createJobController);
 router.get('/jobs', listJobsByStatusController);
 router.patch('/jobs/:jobId/status', updateJobStatusController);
 router.post('/jobs/:jobId/apply', applyToJobController);
+router.post('/applications', createCtsApplicationController);
+router.get('/applications/:applicationId/report', getApplicationPerformanceReportController);
 router.get('/recruiter/:recruiterId/applications', listRecruiterApplicationsController);
 router.get('/recruiters/:recruiterId/applications', listRecruiterApplicationsController);
+router.get('/recruiters/:recruiterId/actual-interviews', getRecruiterActualInterviewsController);
 router.get('/r/:recruiterId/applications', listRecruiterApplicationsController);
 router.get('/sessions/report/:sessionId', getSessionReportController);
 router.post('/sessions/:sessionId/questions', appendQuestionAnalyticsController);

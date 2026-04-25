@@ -23,6 +23,11 @@ export interface NextStepBody {
   roleQuestionsAsked: string;
   personalityQuestionsAsked: string;
   selectedVoice?: string;
+  interviewType?: 'actual' | 'mock';
+  applicationId?: string;
+  jobId?: string;
+  hudWpm?: string;
+  hudConfidence?: string;
 }
 
 export interface InterviewContext {

@@ -84,6 +84,36 @@ export interface CreateJobApplicationPayload {
   candidateName: string;
 }
 
+export interface CreateCtsApplicationPayload {
+  jobId: string;
+  recruiterId: string;
+  candidateId: string;
+  candidateName: string;
+  candidateEmail: string;
+  jobTitle: string;
+  type: 'actual' | 'mock';
+}
+
+export interface UpdateCtsApplicationPayload {
+  applicationId: string;
+  overallScore: number;
+  status: 'pending' | 'reviewed';
+  recruiterSummary?: string;
+  sessionId?: string;
+}
+
+export interface CreateInterviewDataPayload {
+  applicationId: string;
+  question: string;
+  answer: string;
+  rating: number;
+  feedback: string;
+  hudMetrics: {
+    wpm: number;
+    confidence: number;
+  };
+}
+
 export interface UserProfileRecord {
   uid: string;
   email: string;
@@ -346,6 +376,104 @@ export async function createJobApplication(payload: CreateJobApplicationPayload)
   });
 
   return ref.id;
+}
+
+export async function createCtsApplication(payload: CreateCtsApplicationPayload): Promise<string> {
+  const { db } = getFirebaseClients();
+
+  const existing = await db
+    .collection('applications')
+    .where('jobId', '==', payload.jobId)
+    .where('candidateId', '==', payload.candidateId)
+    .where('type', '==', payload.type)
+    .limit(1)
+    .get();
+
+  if (!existing.empty) {
+    return existing.docs[0].id;
+  }
+
+  const ref = await db.collection('applications').add({
+    jobId: payload.jobId,
+    recruiterId: payload.recruiterId,
+    candidateId: payload.candidateId,
+    candidateName: payload.candidateName,
+    candidateEmail: payload.candidateEmail,
+    jobTitle: payload.jobTitle,
+    type: payload.type,
+    overallScore: 0,
+    status: 'pending',
+    timestamp: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return ref.id;
+}
+
+export async function updateCtsApplication(payload: UpdateCtsApplicationPayload): Promise<void> {
+  const { db } = getFirebaseClients();
+
+  await db.collection('applications').doc(payload.applicationId).set(
+    {
+      overallScore: payload.overallScore,
+      status: payload.status,
+      recruiterSummary: payload.recruiterSummary || '',
+      sessionId: payload.sessionId || null,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+export async function appendInterviewData(payload: CreateInterviewDataPayload): Promise<void> {
+  const { db } = getFirebaseClients();
+
+  await db.collection('interviewData').add({
+    applicationId: payload.applicationId,
+    question: payload.question,
+    answer: payload.answer,
+    rating: payload.rating,
+    feedback: payload.feedback,
+    hudMetrics: payload.hudMetrics,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+}
+
+export async function getActualApplicationsForRecruiter(recruiterId: string) {
+  const { db } = getFirebaseClients();
+  const snap = await db
+    .collection('applications')
+    .where('recruiterId', '==', recruiterId)
+    .where('type', '==', 'actual')
+    .orderBy('timestamp', 'desc')
+    .get();
+
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function getInterviewDataByApplication(applicationId: string) {
+  const { db } = getFirebaseClients();
+  const snap = await db
+    .collection('interviewData')
+    .where('applicationId', '==', applicationId)
+    .orderBy('createdAt', 'asc')
+    .get();
+
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function getApplicationById(applicationId: string) {
+  const { db } = getFirebaseClients();
+  const doc = await db.collection('applications').doc(applicationId).get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ...doc.data() };
+}
+
+export async function getJobById(jobId: string) {
+  const { db } = getFirebaseClients();
+  const doc = await db.collection('jobs').doc(jobId).get();
+  if (!doc.exists) return null;
+  return { id: doc.id, ...doc.data() };
 }
 
 export async function listRecruiterApplications(recruiterId: string) {

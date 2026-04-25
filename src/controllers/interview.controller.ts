@@ -10,6 +10,7 @@ import {
 } from '../services/gemini.service';
 import { buildChallengeQuestionText, pickChallenge } from '../config/codingChallenges';
 import { evaluateCodingAnswer } from '../services/codingEvaluator.service';
+import { appendInterviewData, updateCtsApplication } from '../services/firebase.service';
 import { getQuestionAnalyticsForSession } from '../services/firebase.service';
 import { synthesizeInterviewAudio } from '../services/tts.service';
 import { InterviewContext, NextStepBody } from '../models/interview.models';
@@ -280,6 +281,31 @@ export async function nextStepController(req: Request, res: Response) {
 
     const response = await resolveInterviewStep({ body, cvText, userName });
 
+    const interviewType = String(body.interviewType || '').toLowerCase();
+    const isActualInterview = interviewType === 'actual';
+    const applicationId = String(body.applicationId || '');
+    const question = String(body.lastQuestion || '').trim();
+    const answer = String(body.userAnswer || '').trim();
+
+    if (isActualInterview && applicationId && question && answer) {
+      const rating = Number((response.postAnswerAnalysis as any)?.score || 0);
+      const feedback = String((response.postAnswerAnalysis as any)?.feedback || '');
+      const hudWpm = Number(body.hudWpm || 0);
+      const hudConfidence = Number(body.hudConfidence || 0);
+
+      await appendInterviewData({
+        applicationId,
+        question,
+        answer,
+        rating,
+        feedback,
+        hudMetrics: {
+          wpm: Number.isFinite(hudWpm) ? hudWpm : 0,
+          confidence: Number.isFinite(hudConfidence) ? hudConfidence : 0,
+        },
+      });
+    }
+
     res.json(response);
   } catch (error) {
     console.error('Error in /api/interview/next-step:', error);
@@ -311,13 +337,14 @@ export async function demoSessionController(_req: Request, res: Response) {
 
 export async function summarizeController(req: Request, res: Response) {
   try {
-    const { fullChatHistory, analysisHistory, language, sessionId } = req.body;
+    const { fullChatHistory, analysisHistory, language, sessionId, interviewType, applicationId } = req.body;
   const summaryPrompt = `You are a strict FAANG hiring committee. Analyze the transcript and performance. 
 Respond ONLY as valid JSON with these EXACT keys: 
 - "finalScore" (number between 0-10),
 - "selectionProbability" (number between 0-100 indicating the realistic chance of them getting hired),
 - "strengths" (string using markdown), 
-- "areasForImprovement" (string using markdown).`;
+- "areasForImprovement" (string using markdown),
+- "recruiterSummary" (string, 4-6 sentences explaining hire/no-hire rationale with role-fit evidence).`;
   const fullSummaryPrompt = `${summaryPrompt}
 Language: ${language}.
 Transcript: ${JSON.stringify(fullChatHistory)}
@@ -332,6 +359,19 @@ Analyses: ${JSON.stringify(analysisHistory)}`;
       analytics = buildSessionAnalytics(questionAnalytics as Array<Record<string, any>>);
     }
 
+    const isActualInterview = String(interviewType || '').toLowerCase() === 'actual';
+    const ctsApplicationId = String(applicationId || '');
+
+    if (isActualInterview && ctsApplicationId) {
+      await updateCtsApplication({
+        applicationId: ctsApplicationId,
+        overallScore: Number(summary.finalScore || 0),
+        status: 'reviewed',
+        recruiterSummary: String(summary.recruiterSummary || ''),
+        sessionId: sessionId ? String(sessionId) : undefined,
+      });
+    }
+
     res.json({
       ...summary,
       analytics,
@@ -343,6 +383,7 @@ Analyses: ${JSON.stringify(analysisHistory)}`;
         finalScore: 0,
         strengths: 'AI is thinking, please wait...',
         areasForImprovement: 'AI is thinking, please wait...',
+        recruiterSummary: 'Summary unavailable due to temporary model delay.',
         selectionProbability: 0,
         analytics: null,
       });
