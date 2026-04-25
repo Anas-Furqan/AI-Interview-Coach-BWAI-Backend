@@ -10,7 +10,8 @@ const safetySettings = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
 ];
 
-const genAI = new GoogleGenerativeAI(env.geminiApiKey);
+const geminiApiKey = String(env.geminiApiKey || '').trim();
+const genAI = geminiApiKey ? new GoogleGenerativeAI(geminiApiKey) : null;
 const modelCandidates = [
   process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   process.env.GEMINI_FALLBACK_MODEL || 'gemini-1.5-flash',
@@ -18,6 +19,9 @@ const modelCandidates = [
 const backoffScheduleMs = [1000, 2000, 4000];
 
 function createModel(modelName: string) {
+  if (!genAI) {
+    throw new Error('GEMINI_API_KEY is not configured. Interview generation is unavailable until it is set.');
+  }
   return genAI.getGenerativeModel({ model: modelName, safetySettings });
 }
 
@@ -79,6 +83,8 @@ export async function extractCandidateName(cvText: string): Promise<string> {
 export function buildInterviewerPrompt(currentPhase: string, context: InterviewContext): { prompt: string; nextPhase: string } {
   const lang = context.language;
   const isUrdu = /urdu|ur/i.test(lang);
+  const targetCompany = context.targetCompany ? context.targetCompany : 'a top-tier tech company';
+  const rigorContext = `You are a strict, highly technical interviewer at ${targetCompany}. Your questions MUST be highly rigorous and domain-specific. Do NOT accept superficial answers.`;
   const langInstruction = isUrdu
     ? 'IMPORTANT: Reply in natural Urdu written in Urdu script (not Roman Urdu).'
     : `IMPORTANT: Reply in ${lang}.`;
@@ -109,14 +115,14 @@ export function buildInterviewerPrompt(currentPhase: string, context: InterviewC
   if (currentPhase === 'GREETING') {
     const nameTag = context.userName && context.userName !== 'Candidate' ? `, ${context.userName}` : '';
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Start the interview for ${context.role}. Greet the candidate${nameTag} and ask for a concise introduction. ${summaryContext}`,
+      prompt: `${rigorContext} ${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Start the interview for ${context.role}. Greet the candidate${nameTag} and ask for a concise introduction. ${summaryContext}`,
       nextPhase: 'INTRODUCTION',
     };
   }
 
   if (currentPhase === 'INTRODUCTION') {
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate intro: "${context.userAnswer}". Ask the next experience question using CV and summary context. CV: """${context.cvText}""" ${summaryContext}`,
+      prompt: `${rigorContext} ${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate intro: "${context.userAnswer}". Ask the next experience question using CV and summary context. CV: """${context.cvText}""" ${summaryContext}`,
       nextPhase: 'EXPERIENCE',
     };
   }
@@ -124,7 +130,7 @@ export function buildInterviewerPrompt(currentPhase: string, context: InterviewC
   if (parseInt(context.expQuestionsAsked, 10) < parseInt(context.numExpQuestions, 10)) {
     const nextPhase = parseInt(context.expQuestionsAsked, 10) + 1 >= parseInt(context.numExpQuestions, 10) ? 'ROLE_SPECIFIC' : 'EXPERIENCE';
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate answer: "${context.userAnswer}". Ask experience question ${parseInt(context.expQuestionsAsked, 10) + 1}/${context.numExpQuestions}. CV: """${context.cvText}"""`,
+      prompt: `${rigorContext} ${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate answer: "${context.userAnswer}". Ask experience question ${parseInt(context.expQuestionsAsked, 10) + 1}/${context.numExpQuestions}. CV: """${context.cvText}"""`,
       nextPhase,
     };
   }
@@ -136,7 +142,7 @@ export function buildInterviewerPrompt(currentPhase: string, context: InterviewC
       ? 'Ask one coding question. Do not provide the solution. Request code plus explanation and time/space complexity.'
       : '';
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate answer: "${context.userAnswer}". ${jdContext} ${codingModeInstruction}`,
+      prompt: `${rigorContext} ${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Candidate answer: "${context.userAnswer}". ${jdContext} ${codingModeInstruction}`,
       nextPhase,
     };
   }
@@ -144,13 +150,13 @@ export function buildInterviewerPrompt(currentPhase: string, context: InterviewC
   if (parseInt(context.personalityQuestionsAsked, 10) < parseInt(context.numPersonalityQuestions, 10)) {
     const nextPhase = parseInt(context.personalityQuestionsAsked, 10) + 1 >= parseInt(context.numPersonalityQuestions, 10) ? 'CLOSING' : 'PERSONALITY';
     return {
-      prompt: `${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Ask a fresh personality/behavioral question and avoid repeating earlier ones from history: """${context.fullChatHistory || ''}"""`,
+      prompt: `${rigorContext} ${langInstruction} ${professional} ${pakistanContext} ${difficultyStyle} ${modeStyle} ${companyContext} ${companyStyle} ${companyTarget} ${brevityDirective} Ask a fresh personality/behavioral question and avoid repeating earlier ones from history: """${context.fullChatHistory || ''}"""`,
       nextPhase,
     };
   }
 
   return {
-    prompt: `${langInstruction} ${professional} ${companyStyle} Interview complete. Thank ${context.userName} and explain next steps without specific timeline.`,
+    prompt: `${rigorContext} ${langInstruction} ${professional} ${companyStyle} Interview complete. Thank ${context.userName} and explain next steps without specific timeline.`,
     nextPhase: 'FINISHED',
   };
 }

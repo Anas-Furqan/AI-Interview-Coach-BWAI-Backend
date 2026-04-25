@@ -312,24 +312,18 @@ export async function demoSessionController(_req: Request, res: Response) {
 export async function summarizeController(req: Request, res: Response) {
   try {
     const { fullChatHistory, analysisHistory, language, sessionId } = req.body;
-    const strictRigor = `You are a ruthless, highly technical FAANG interviewer.
-DO NOT give generic praise.
-If the candidate's answer lacks the STAR method (Situation, Task, Action, Result), deduct points.
-You MUST cite a specific sentence the candidate said, and explain technically why it was strong or weak.
-Provide a final Selection Probability between 0% and 100%.`;
-
-    const summaryPrompt = `${strictRigor}
+  const summaryPrompt = `You are a strict FAANG hiring committee. Analyze the transcript and performance. 
+Respond ONLY as valid JSON with these EXACT keys: 
+- "finalScore" (number between 0-10),
+- "selectionProbability" (number between 0-100 indicating the realistic chance of them getting hired),
+- "strengths" (string using markdown), 
+- "areasForImprovement" (string using markdown).`;
+  const fullSummaryPrompt = `${summaryPrompt}
 Language: ${language}.
-Respond only as valid JSON with keys:
-- finalScore (0-10)
-- strengths (array of concise strings)
-- areasForImprovement (array of concise strings)
-- selectionProbability (0-100)
-- evidenceQuotes (array of exact candidate sentences used for judgment)
 Transcript: ${JSON.stringify(fullChatHistory)}
 Analyses: ${JSON.stringify(analysisHistory)}`;
 
-    const raw = await generateContentWithRetry(summaryPrompt);
+  const raw = await generateContentWithRetry(fullSummaryPrompt);
     const summary = parseJsonFromModel(raw) as Record<string, unknown>;
 
     let analytics = null;

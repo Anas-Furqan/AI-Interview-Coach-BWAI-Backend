@@ -10,14 +10,12 @@ function parseCsv(value?: string): string[] {
     .filter(Boolean);
 }
 
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error('GEMINI_API_KEY environment variable not set.');
-}
-
 export const env = {
-  port: Number(process.env.PORT || 8080),
-  geminiApiKey: process.env.GEMINI_API_KEY,
+  port: Number(process.env.PORT || 8000),
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
   gcpCredentialsJson: process.env.GCP_CREDENTIALS_JSON || '',
+  dialogflowProjectId: process.env.DIALOGFLOW_PROJECT_ID || '',
+  dialogflowLanguageCode: process.env.DIALOGFLOW_LANGUAGE_CODE || 'en',
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID,
   firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL,
   firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY,

@@ -30,9 +30,9 @@ router.post('/jobs/:jobId/apply', applyToJobController);
 router.get('/recruiter/:recruiterId/applications', listRecruiterApplicationsController);
 router.get('/recruiters/:recruiterId/applications', listRecruiterApplicationsController);
 router.get('/r/:recruiterId/applications', listRecruiterApplicationsController);
+router.get('/sessions/report/:sessionId', getSessionReportController);
 router.post('/sessions/:sessionId/questions', appendQuestionAnalyticsController);
 router.patch('/sessions/:sessionId/finalize', finalizeSessionController);
-router.get('/sessions/report/:sessionId', getSessionReportController);
 router.get('/sessions/:uid', listUserSessionsController);
 
 export default router;

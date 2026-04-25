@@ -138,9 +138,16 @@ export async function upsertUserProfile(payload: UpsertUserPayload): Promise<'CA
 
   const email = String(payload.email || '').toLowerCase();
   const normalizedRequestedRole = String(payload.requestedRole || 'CANDIDATE').toUpperCase();
+  const existingSnapshot = await db.collection('users').doc(payload.uid).get();
+  const existingRoleRaw = String(existingSnapshot.data()?.role || '').toUpperCase();
+  const existingRole = existingRoleRaw === 'ADMIN' ? 'ADMIN' : existingRoleRaw === 'RECRUITER' ? 'RECRUITER' : 'CANDIDATE';
   const computedRole = env.adminEmails.includes(email)
     ? 'ADMIN'
-    : normalizedRequestedRole === 'RECRUITER'
+    : existingRole === 'ADMIN'
+      ? 'ADMIN'
+      : existingRole === 'RECRUITER'
+        ? 'RECRUITER'
+        : normalizedRequestedRole === 'RECRUITER'
       ? 'RECRUITER'
       : 'CANDIDATE';
 
